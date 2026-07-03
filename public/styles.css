@@ -243,6 +243,23 @@ h1 {
   flex: 0 0 auto;
 }
 
+.flow-label .hot-badge {
+  position: absolute;
+    top: -11px;
+    right: -18px;
+    padding: 1px 2px;
+    border: 1px solid #c8333a;
+    border-radius: 3px;
+    background: rgb(255 245 238 / 60%);
+    color: #c8333a;
+    font-size: 8.5px;
+    font-weight: 800;
+    white-space: nowrap;
+    line-height: 1.2;
+    box-shadow: 0 1px 3px rgba(200, 51, 58, 0.22);
+    pointer-events: none;
+}
+
 .poster-footer {
   position: absolute;
   left: 20px;

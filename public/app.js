@@ -708,7 +708,7 @@ function renderLabels(rows, frameCount) {
     if (!label) {
       label = document.createElement("div");
       label.className = "flow-label";
-      label.innerHTML = `<span class="name"></span><span class="value"></span>`;
+      label.innerHTML = `<span class="name"></span><span class="value"></span><span class="hot-badge" style="display:none;"></span>`;
       labelLayer.appendChild(label);
       labelNodes.set(key, label);
     }
@@ -716,6 +716,16 @@ function renderLabels(rows, frameCount) {
     label.style.transform = `translate3d(${labelX.toFixed(1)}px, ${(labelY - 7.5).toFixed(1)}px, 0)`;
     label.querySelector(".name").textContent = item.row.name;
     label.querySelector(".value").textContent = formatYi(item.point.mainNet);
+
+    const hotBadge = label.querySelector(".hot-badge");
+    const hotReason = String(item.row.hotReason || "");
+    const hotMatch = hotReason.match(/(\d+)\s*家\s*涨停/);
+    if (isFinalFrame && hotMatch && Number(hotMatch[1]) > 30) {
+      hotBadge.textContent = hotReason;
+      hotBadge.style.display = "";
+    } else {
+      hotBadge.style.display = "none";
+    }
 
     let dot = dotNodes.get(key);
     if (!dot) {
@@ -1059,7 +1069,11 @@ async function loadData(options = {}) {
       throw new Error("请先保存或填写至少一个自定义板块名称");
     }
     const limit = useNamedList ? names.length : 30;
-    const needsHistoricalData = pendingContext.dataDate !== dateStringFromDate(new Date());
+    // 仅在"今天是交易日但盘未收"时才认为拿不到历史数据；
+    // 周末/节假日东方财富接口会返回最近交易日的分时，仍可正常拉取。
+    const now = new Date();
+    const needsHistoricalData =
+      isTradingWeekday(now) && pendingContext.dataDate !== dateStringFromDate(now);
     const endpoint = useNamedList
       ? `/api/custom-flow?clientFlow=1&limit=${limit}&session=${session}&names=${encodeURIComponent(names.join(","))}`
       : `/api/today-flow?clientFlow=1&mode=hot&hotType=concept&limit=${limit}&session=${session}`;
@@ -1067,7 +1081,7 @@ async function loadData(options = {}) {
     if (!response.ok) throw new Error(`接口返回 ${response.status}`);
     let data = await response.json();
     data.queryTime = data.queryTime || formatClientQueryTime();
-    if (needsHistoricalData) {
+    if (needsHistoricalData && data.pointsReturned === false) {
       const reason =
         mode === "hot"
           ? `同花顺热榜接口没有日期参数，无法获取 ${pendingContext.dataDate} 的历史热榜；东方财富分钟资金流接口也不支持按日期拉取该日分时。`
