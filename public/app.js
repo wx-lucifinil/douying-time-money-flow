@@ -26,11 +26,13 @@ let labelNodes = new Map();
 let dotNodes = new Map();
 let lastLabelCommit = 0;
 let isLoading = false;
+let isHotListLoading = false;
 let animationFrameId = null;
+let resolveAnimationDone = null;
 
 const STORAGE_KEY = "douyinMoneyFlow.sectorNames";
 const WATERMARK_KEY = "douyinMoneyFlow.watermarkName";
-const DEFAULT_WATERMARK_NAME = "高翔研习社";
+const DEFAULT_WATERMARK_NAME = "牛熊研社";
 
 const POSITIVE_EXTREME = [126, 22, 32];
 const NEGATIVE_EXTREME = [15, 86, 48];
@@ -202,6 +204,7 @@ function markFiltersPendingRefresh() {
   updateSessionOptionLabels();
   currentDataContext = resolveClientDataContext(sessionEl.value);
   updateReloadButtonText(currentDataContext);
+  updateReloadAvailability();
   statusEl.textContent = `筛选已更新，点击“${reloadEl.textContent}”后重新拉取并绘图。`;
 }
 
@@ -728,45 +731,75 @@ function renderLabels(rows, frameCount) {
   }
 }
 
-function animateRows(rows) {
+function animationDurationForSession(session = sessionEl.value) {
+  return session === "morning" ? 12500 : 16500;
+}
+
+function stopAnimation(cancelled = false) {
   window.clearInterval(animationTimer);
+  animationTimer = null;
   if (animationFrameId !== null) {
     window.cancelAnimationFrame(animationFrameId);
     animationFrameId = null;
   }
+  if (resolveAnimationDone) {
+    const resolve = resolveAnimationDone;
+    resolveAnimationDone = null;
+    resolve({ cancelled });
+  }
+}
+
+function animateRows(rows) {
+  stopAnimation(true);
   lastLabelCommit = 0;
   const totalPoints = Math.max(...rows.map((row) => row.points.length), 1);
   // 午盘数据点约 120、收盘约 240；按时段区分时长，让每点播放速度接近
-  const duration = sessionEl.value === "morning" ? 12500 : 16500;
+  const duration = animationDurationForSession();
   const startedAt = performance.now();
   let lastChartPaint = 0;
 
-  function tick(now) {
-    const progress = Math.min((now - startedAt) / duration, 1);
-    activeFrame = progress * Math.max(totalPoints - 1, 0);
-    if (now - lastChartPaint > 32 || progress === 1) {
-      renderChart(rows, activeFrame);
-      lastChartPaint = now;
-    } else {
-      renderLabels(rows, activeFrame);
-      const currentIndex = Math.max(0, Math.min(Math.round(activeFrame), rows[0]?.points.length - 1 || 0));
-      currentTimeEl.textContent = rows[0]?.points[currentIndex]?.time || "--:--";
-    }
-    if (progress < 1) {
-      animationFrameId = requestAnimationFrame(tick);
-    } else {
-      animationFrameId = null;
-    }
-  }
+  return new Promise((resolve) => {
+    resolveAnimationDone = resolve;
 
-  animationFrameId = requestAnimationFrame(tick);
-
-  animationTimer = window.setInterval(() => {
-    if (activeFrame >= totalPoints - 1) {
+    function finish() {
       window.clearInterval(animationTimer);
+      animationTimer = null;
+      animationFrameId = null;
+      activeFrame = totalPoints - 1;
       renderChart(rows, totalPoints - 1);
+      if (resolveAnimationDone) {
+        const done = resolveAnimationDone;
+        resolveAnimationDone = null;
+        done({ cancelled: false, durationMs: duration, totalPoints });
+      }
     }
-  }, 500);
+
+    function tick(now) {
+      const progress = Math.min((now - startedAt) / duration, 1);
+      activeFrame = progress * Math.max(totalPoints - 1, 0);
+      if (now - lastChartPaint > 32 || progress === 1) {
+        renderChart(rows, activeFrame);
+        lastChartPaint = now;
+      } else {
+        renderLabels(rows, activeFrame);
+        const currentIndex = Math.max(0, Math.min(Math.round(activeFrame), rows[0]?.points.length - 1 || 0));
+        currentTimeEl.textContent = rows[0]?.points[currentIndex]?.time || "--:--";
+      }
+      if (progress < 1) {
+        animationFrameId = requestAnimationFrame(tick);
+      } else {
+        finish();
+      }
+    }
+
+    animationFrameId = requestAnimationFrame(tick);
+
+    animationTimer = window.setInterval(() => {
+      if (activeFrame >= totalPoints - 1) {
+        finish();
+      }
+    }, 500);
+  });
 }
 
 function readSavedSectorNames() {
@@ -792,6 +825,29 @@ function getEditorNames() {
     .filter(Boolean);
 }
 
+function updateReloadAvailability() {
+  if (isLoading) return;
+  const hasSectorNames = getEditorNames().length > 0;
+  reloadEl.disabled = isHotListLoading || !hasSectorNames;
+  reloadEl.title = hasSectorNames ? "" : "请先获取热榜或保存板块名单";
+}
+
+function setSectorListLoading(loading) {
+  sectorListEl.classList.toggle("is-loading", loading);
+  if (loading) {
+    sectorListEl.setAttribute("aria-busy", "true");
+    if (!sectorListEl.querySelector(".sector-list-loading")) {
+      const loadingEl = document.createElement("div");
+      loadingEl.className = "sector-list-loading";
+      loadingEl.innerHTML = `<span class="sector-list-spinner" aria-hidden="true"></span>`;
+      sectorListEl.appendChild(loadingEl);
+    }
+    return;
+  }
+  sectorListEl.removeAttribute("aria-busy");
+  sectorListEl.querySelector(".sector-list-loading")?.remove();
+}
+
 function renderSectorEditor(names) {
   sectorListEl.innerHTML = "";
   names.forEach((name, index) => {
@@ -810,6 +866,7 @@ function renderSectorEditor(names) {
     row.append(indexEl, input, errorMark);
     sectorListEl.appendChild(row);
   });
+  updateReloadAvailability();
 }
 
 function normalizeEditorName(name) {
@@ -852,7 +909,11 @@ function applyDefaultSession() {
 
 async function fetchHotSectorNames() {
   statusEl.textContent = "正在获取同花顺板块热榜...";
+  isHotListLoading = true;
+  setSectorListLoading(true);
+  updateReloadAvailability();
   getHotEl.disabled = true;
+  getHotEl.setAttribute("aria-busy", "true");
   try {
     const response = await apiRequest(`/api/hot-sectors?hotType=concept&limit=30&session=${sessionEl.value}`);
     if (!response.ok) throw new Error(`接口返回 ${response.status}`);
@@ -865,7 +926,11 @@ async function fetchHotSectorNames() {
   } catch (error) {
     statusEl.textContent = `获取热门失败：${error.message}`;
   } finally {
+    isHotListLoading = false;
+    setSectorListLoading(false);
+    updateReloadAvailability();
     getHotEl.disabled = false;
+    getHotEl.removeAttribute("aria-busy");
   }
 }
 
@@ -964,9 +1029,19 @@ async function saveClientFlow(data) {
   return response.json();
 }
 
-async function loadData() {
+async function loadData(options = {}) {
+  const { autoplay = true, throwOnError = false } = options;
+  const fail = (message) => {
+    if (throwOnError) throw new Error(message);
+    return { ok: false, error: message };
+  };
   // 防重入：即使按钮 disabled 在 finally 才解除，也避免快速连点中夹缝触发
-  if (isLoading) return;
+  if (isLoading || isHotListLoading) return fail("当前仍在加载，请稍后再试。");
+  if (getEditorNames().length === 0) {
+    updateReloadAvailability();
+    statusEl.textContent = "请先获取热榜或保存板块名单。";
+    return fail(statusEl.textContent);
+  }
   isLoading = true;
   const mode = modeEl.value;
   const session = sessionEl.value;
@@ -1017,7 +1092,7 @@ async function loadData() {
       titleEl.textContent = todayTitle(currentDataContext.session, currentDataContext.dataDate);
       const fileNote = data.dataFile?.path ? `已保存错误记录到 ${data.dataFile.path}。` : "";
       statusEl.textContent = `真实历史数据获取失败：${reason}${fileNote}`;
-      return;
+      return fail(statusEl.textContent);
     }
     data = await hydrateRealMinuteFlows(data, limit);
     data.dataDate = inferPointDataDate(data.sectors) || data.dataDate;
@@ -1032,7 +1107,7 @@ async function loadData() {
       const failedCount = Number(data.failedCount || data.sectors?.filter((sector) => sector.error).length || 0);
       clearChartDisplay();
       statusEl.textContent = `真实分时没有拿到可用曲线，${failedCount} 个板块已标红 ×；不会再用假曲线混入真实刷新结果。`;
-      return;
+      return fail(statusEl.textContent);
     }
 
     currentDataContext = {
@@ -1059,15 +1134,25 @@ async function loadData() {
     const hotNote = data.hotReturnedCount ? `同花顺本次返回 ${data.hotReturnedCount} 个热榜板块。` : "";
     statusEl.textContent = `已加载 ${scopeText} ${latestRows.length} 个。${hotNote}${moodText(data.marketMood)}${previewNote}${pointText}${fileNote}`;
     renderChart(latestRows, 0);
-    animateRows(latestRows);
+    if (autoplay) animateRows(latestRows);
+    return {
+      ok: true,
+      session: currentDataContext.session,
+      dataDate: currentDataContext.dataDate,
+      rowCount: latestRows.length,
+      durationMs: animationDurationForSession(session),
+      status: statusEl.textContent,
+    };
   } catch (error) {
     clearChartDisplay();
     statusEl.textContent = `加载失败：${error.message}`;
+    if (throwOnError) throw error;
+    return { ok: false, error: error.message };
   } finally {
     isLoading = false;
-    reloadEl.disabled = false;
     reloadEl.removeAttribute("aria-busy");
     updateReloadButtonText(currentDataContext);
+    updateReloadAvailability();
   }
 }
 
@@ -1088,10 +1173,12 @@ function renderInitialState() {
   labelNodes.clear();
   dotNodes.clear();
   if (chart) chart.clear();
+  updateReloadAvailability();
   statusEl.textContent = `点击“${reloadEl.textContent}”后获取同花顺热榜，再用东方财富真实分钟资金流绘图。`;
 }
 
 function clearChartDisplay() {
+  stopAnimation(true);
   latestRows = [];
   currentTimeEl.textContent = "--:--";
   labelLayer.innerHTML = "";
@@ -1102,6 +1189,79 @@ function clearChartDisplay() {
   dotNodes.clear();
   if (chart) chart.clear();
 }
+
+function waitForAutomationState(predicate, timeoutMs, label) {
+  const startedAt = performance.now();
+  return new Promise((resolve, reject) => {
+    function check() {
+      if (predicate()) {
+        resolve();
+        return;
+      }
+      if (performance.now() - startedAt > timeoutMs) {
+        reject(new Error(`${label} 等待超时`));
+        return;
+      }
+      window.setTimeout(check, 100);
+    }
+    check();
+  });
+}
+
+window.__moneyFlowAutomation = {
+  async prepare(options = {}) {
+    const session = options.session === "morning" ? "morning" : "close";
+    const mode = options.mode === "custom" ? "custom" : "hot";
+    await waitForAutomationState(() => Boolean(window.echarts), 30000, "ECharts 加载");
+    if (isHotListLoading) {
+      await waitForAutomationState(() => !isHotListLoading, 45000, "同花顺热榜初始化");
+    }
+    modeEl.value = mode;
+    sessionEl.value = session;
+    markFiltersPendingRefresh();
+    if (modeEl.value === "hot" && getEditorNames().length === 0) {
+      await fetchHotSectorNames();
+    }
+    if (isHotListLoading) {
+      await waitForAutomationState(() => !isHotListLoading, 45000, "同花顺热榜");
+    }
+    return loadData({ autoplay: false, throwOnError: true });
+  },
+  async play() {
+    if (!latestRows.length) throw new Error("没有可播放的资金流曲线");
+    return animateRows(latestRows);
+  },
+  renderFrame(frame) {
+    if (!latestRows.length) throw new Error("没有可渲染的资金流曲线");
+    stopAnimation(true);
+    const totalPoints = Math.max(...latestRows.map((row) => row.points.length), 1);
+    activeFrame = Math.min(Math.max(Number(frame) || 0, 0), totalPoints - 1);
+    renderChart(latestRows, activeFrame);
+    return {
+      activeFrame,
+      totalPoints,
+    };
+  },
+  getState() {
+    return {
+      activeFrame,
+      rowCount: latestRows.length,
+      session: currentDataContext?.session || sessionEl.value,
+      dataDate: currentDataContext?.dataDate || "",
+      durationMs: animationDurationForSession(),
+      status: statusEl.textContent,
+    };
+  },
+  posterRect() {
+    const rect = posterEl.getBoundingClientRect();
+    return {
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+    };
+  },
+};
 
 window.addEventListener("resize", () => {
   if (!chart) return;

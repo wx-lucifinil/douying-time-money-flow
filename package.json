@@ -5,7 +5,9 @@
   "description": "A-share sector fund-flow vertical chart preview page.",
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "record:morning": "node scripts/record-flow.mjs --session=morning",
+    "record:close": "node scripts/record-flow.mjs --session=close"
   },
   "engines": {
     "node": ">=18"
