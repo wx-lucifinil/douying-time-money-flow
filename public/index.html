@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>A股板块资金流向</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  </head>
+  <body>
+    <main class="stage">
+      <section class="poster" aria-label="A股板块资金流向图表">
+        <header class="poster-header">
+          <h1 id="title">今日收盘资金流向</h1>
+          <div class="title-divider" aria-hidden="true"></div>
+          <div class="meta-row">
+            <strong id="brandName">高翔研习社</strong>
+            <span class="time-chip">时间：<b id="currentTime">--:--</b></span>
+          </div>
+        </header>
+
+        <section class="chart-shell">
+          <div id="chart" class="chart"></div>
+          <div id="watermarkLayer" class="watermark-layer" aria-hidden="true"></div>
+          <div id="yAxisLabels" class="y-axis-label-layer" aria-hidden="true"></div>
+          <div id="xAxisLabels" class="x-axis-label-layer" aria-hidden="true"></div>
+          <svg id="labelLines" class="label-lines" aria-hidden="true"></svg>
+          <div id="labelLayer" class="label-layer" aria-hidden="true"></div>
+        </section>
+
+        <footer class="poster-footer">
+          <div class="rule"></div>
+          <p>根据实时数据整理，不作为买卖依据</p>
+        </footer>
+      </section>
+
+      <aside class="control-panel" aria-label="图表控制">
+        <div>
+          <p class="eyebrow">Preview</p>
+          <h2>板块资金流动画页面</h2>
+        </div>
+        <label>
+          热门判定
+          <select id="mode">
+            <option value="hot">同花顺热榜</option>
+            <option value="custom">我的保存名单</option>
+          </select>
+        </label>
+        <label>
+          数据时段
+          <select id="session">
+            <option value="close">收盘 15:00</option>
+            <option value="morning">午盘 11:30</option>
+          </select>
+        </label>
+        <label>
+          水印名称
+          <input id="watermarkName" type="text" value="高翔研习社" />
+        </label>
+        <section class="sector-editor" aria-label="板块名单编辑">
+          <div class="editor-head">
+            <div>
+              <p class="eyebrow">Sectors</p>
+              <h3>板块名单</h3>
+            </div>
+            <button id="getHot" type="button" class="ghost-button">获取热榜</button>
+          </div>
+          <div id="sectorList" class="sector-list"></div>
+          <div class="editor-actions">
+            <button id="saveSectors" type="button">保存名单</button>
+            <button id="resetSectors" type="button" class="ghost-button">恢复热榜</button>
+          </div>
+        </section>
+        <button id="reload" type="button">刷新今日数据</button>
+        <dl>
+          <div>
+            <dt>数据源</dt>
+            <dd>同花顺热榜 + 东方财富分钟资金流</dd>
+          </div>
+          <div>
+            <dt>动画时长</dt>
+            <dd>15-18s 目标区间</dd>
+          </div>
+          <div>
+            <dt>展示数量</dt>
+            <dd>约 30 条曲线</dd>
+          </div>
+        </dl>
+        <p id="status" class="status">等待加载</p>
+      </aside>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

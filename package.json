@@ -1,0 +1,13 @@
+{
+  "name": "douying-time-money-flow",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A-share sector fund-flow vertical chart preview page.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

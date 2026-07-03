@@ -1,0 +1,4 @@
+interface:
+  display_name: "抖音资金流项目"
+  short_description: "快速接手A股板块资金流竖屏动画项目与真实数据边界"
+  default_prompt: "Use $douyin-money-flow-project to understand and continue this local A-share sector money-flow animation project."
