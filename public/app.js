@@ -109,6 +109,38 @@ function formatClientQueryTime(date = new Date()) {
   return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
 }
 
+function apiRequest(url, options = {}) {
+  const method = options.method || "GET";
+  const requestUrl = new URL(url, window.location.origin);
+  if (method === "GET") {
+    requestUrl.searchParams.set("__networkTs", String(Date.now()));
+  }
+
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, requestUrl.toString(), true);
+    xhr.responseType = "text";
+    for (const [key, value] of Object.entries(options.headers || {})) {
+      xhr.setRequestHeader(key, value);
+    }
+    xhr.onload = () => {
+      resolve({
+        ok: xhr.status >= 200 && xhr.status < 300,
+        status: xhr.status,
+        json: async () => JSON.parse(xhr.responseText || "{}"),
+      });
+    };
+    xhr.onerror = () => {
+      resolve({
+        ok: false,
+        status: 0,
+        json: async () => ({ error: "XMLHttpRequest failed" }),
+      });
+    };
+    xhr.send(options.body || null);
+  });
+}
+
 function isTradingWeekday(date) {
   const day = date.getDay();
   return day >= 1 && day <= 5;
@@ -822,7 +854,7 @@ async function fetchHotSectorNames() {
   statusEl.textContent = "正在获取同花顺板块热榜...";
   getHotEl.disabled = true;
   try {
-    const response = await fetch(`/api/hot-sectors?hotType=concept&limit=30&session=${sessionEl.value}`);
+    const response = await apiRequest(`/api/hot-sectors?hotType=concept&limit=30&session=${sessionEl.value}`);
     if (!response.ok) throw new Error(`接口返回 ${response.status}`);
     const data = await response.json();
     const names = (data.sectors || []).map((sector) => sector.name).slice(0, 30);
@@ -842,7 +874,7 @@ async function fetchEastmoneyFlow(code) {
   if (!/^BK\d{4}$/.test(sectorCode)) {
     throw new Error("缺少有效板块代码");
   }
-  const response = await fetch(`/api/flow?code=${encodeURIComponent(sectorCode)}`);
+  const response = await apiRequest(`/api/flow?code=${encodeURIComponent(sectorCode)}`);
   if (!response.ok) throw new Error(`真实分时接口返回 ${response.status}`);
   const data = await response.json();
   const points = data.points || [];
@@ -923,7 +955,7 @@ async function saveClientFlow(data) {
     ...data,
     queryTime: data.queryTime || formatClientQueryTime(),
   };
-  const response = await fetch("/api/save-client-flow", {
+  const response = await apiRequest("/api/save-client-flow", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -956,7 +988,7 @@ async function loadData() {
     const endpoint = useNamedList
       ? `/api/custom-flow?clientFlow=1&limit=${limit}&session=${session}&names=${encodeURIComponent(names.join(","))}`
       : `/api/today-flow?clientFlow=1&mode=hot&hotType=concept&limit=${limit}&session=${session}`;
-    const response = await fetch(endpoint);
+    const response = await apiRequest(endpoint);
     if (!response.ok) throw new Error(`接口返回 ${response.status}`);
     let data = await response.json();
     data.queryTime = data.queryTime || formatClientQueryTime();
