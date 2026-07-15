@@ -159,7 +159,8 @@ function previousTradingDateString(date) {
 function todayTitle(session, dataDate) {
   const fallbackDate = dateStringFromDate(new Date());
   const [, , month = "", date = ""] = String(dataDate || fallbackDate).match(/^(\d{4})-(\d{2})-(\d{2})$/) || [];
-  return `${month}月${date}日${session === "morning" ? "午盘" : "收盘"}资金流向`;
+  const keyword = session === "morning" ? "午盘" : "收盘";
+  return `${month}月${date}日<span style="color: #FFD700;">${keyword}</span>资金流向`;
 }
 
 function resolveClientDataContext(session = sessionEl.value, now = new Date()) {
@@ -687,6 +688,23 @@ function renderLabels(rows, frameCount) {
   const finalByName = new Map(finalLayout.map((item) => [item.row.name, item.y]));
   const activeKeys = new Set(currentRows.map((item) => item.row.name));
 
+  // 计算涨停数前三阈值：只在收盘且非最终帧时也计算，供后续判断使用
+  let top3LimitUpThreshold = 0;
+  if (isFinalFrame && currentDataContext?.session === "close") {
+    const allLimitUpCounts = currentRows
+      .map((item) => {
+        const match = String(item.row.hotReason || "").match(/(\d+)\s*家\s*涨停/);
+        return match ? Number(match[1]) : 0;
+      })
+      .filter((c) => c > 0)
+      .sort((a, b) => b - a);
+    if (allLimitUpCounts.length >= 3) {
+      top3LimitUpThreshold = allLimitUpCounts[2]; // 第三名的涨停数
+    } else if (allLimitUpCounts.length > 0) {
+      top3LimitUpThreshold = allLimitUpCounts[allLimitUpCounts.length - 1];
+    }
+  }
+
   for (const key of labelNodes.keys()) {
     if (!activeKeys.has(key)) {
       labelNodes.get(key)?.remove();
@@ -720,7 +738,11 @@ function renderLabels(rows, frameCount) {
     const hotBadge = label.querySelector(".hot-badge");
     const hotReason = String(item.row.hotReason || "");
     const hotMatch = hotReason.match(/(\d+)\s*家\s*涨停/);
-    if (isFinalFrame && hotMatch && Number(hotMatch[1]) > 30) {
+    const isCloseSession = currentDataContext?.session === "close";
+    const isST = /ST/.test(String(item.row.name || ""));
+    const limitUpCount = hotMatch ? Number(hotMatch[1]) : 0;
+    const showBadge = isFinalFrame && isCloseSession && !isST && limitUpCount > 10 && limitUpCount >= top3LimitUpThreshold;
+    if (showBadge) {
       hotBadge.textContent = hotReason;
       hotBadge.style.display = "";
     } else {
@@ -1103,7 +1125,7 @@ async function loadData(options = {}) {
       clearChartDisplay();
       currentDataContext = pendingContext;
       updateReloadButtonText(currentDataContext);
-      titleEl.textContent = todayTitle(currentDataContext.session, currentDataContext.dataDate);
+      titleEl.innerHTML = todayTitle(currentDataContext.session, currentDataContext.dataDate);
       const fileNote = data.dataFile?.path ? `已保存错误记录到 ${data.dataFile.path}。` : "";
       statusEl.textContent = `真实历史数据获取失败：${reason}${fileNote}`;
       return fail(statusEl.textContent);
@@ -1129,7 +1151,7 @@ async function loadData(options = {}) {
       dataDate: data.dataDate || pendingContext.dataDate,
     };
     updateReloadButtonText(currentDataContext);
-    titleEl.textContent = todayTitle(currentDataContext.session, currentDataContext.dataDate);
+    titleEl.innerHTML = todayTitle(currentDataContext.session, currentDataContext.dataDate);
     applyMarketMood(data.marketMood);
     const failedCount = Number(data.failedCount || 0);
     const pointCounts = (data.sectors || [])
@@ -1175,7 +1197,7 @@ function renderInitialState() {
   const context = resolveClientDataContext(session);
   currentDataContext = context;
   updateReloadButtonText(context);
-  titleEl.textContent = todayTitle(context.session, context.dataDate);
+  titleEl.innerHTML = todayTitle(context.session, context.dataDate);
   applyMarketMood({ tone: "green" });
   applySectorErrors([]);
   latestRows = [];

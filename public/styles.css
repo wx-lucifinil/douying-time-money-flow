@@ -246,7 +246,7 @@ h1 {
 .flow-label .hot-badge {
   position: absolute;
     top: -11px;
-    right: -18px;
+    right: -9px;
     padding: 1px 2px;
     border: 1px solid #c8333a;
     border-radius: 3px;
