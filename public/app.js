@@ -764,7 +764,7 @@ function renderLabels(rows, frameCount) {
 }
 
 function animationDurationForSession(session = sessionEl.value) {
-  return session === "morning" ? 12500 : 16500;
+  return session === "morning" ? 11500 : 14500;
 }
 
 function stopAnimation(cancelled = false) {
